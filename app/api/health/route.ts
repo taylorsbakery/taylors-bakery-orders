@@ -10,7 +10,9 @@ export async function GET() {
   checks.DATABASE_URL = !!process.env.DATABASE_URL ? 'SET' : 'MISSING';
   checks.NEXTAUTH_SECRET = !!process.env.NEXTAUTH_SECRET ? 'SET' : 'MISSING';
   checks.NEXTAUTH_URL = process.env.NEXTAUTH_URL ?? 'MISSING';
-  checks.SQUARE_ACCESS_TOKEN = !!process.env.SQUARE_ACCESS_TOKEN ? 'SET' : 'MISSING';
+  checks.SQUARE_ENVIRONMENT = process.env.SQUARE_ENVIRONMENT ?? 'NOT SET (defaults to sandbox)';
+  checks.SQUARE_PRODUCTION_ACCESS_TOKEN = !!process.env.SQUARE_PRODUCTION_ACCESS_TOKEN ? 'SET' : 'MISSING';
+  checks.SQUARE_SANDBOX_ACCESS_TOKEN = !!process.env.SQUARE_SANDBOX_ACCESS_TOKEN ? 'SET' : 'MISSING';
 
   // Test database connection
   try {

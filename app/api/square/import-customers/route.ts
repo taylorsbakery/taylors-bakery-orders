@@ -21,7 +21,6 @@ function mapCustomer(customer: any) {
     || [givenName, familyName].filter(Boolean).join(' ')
     || email
     || `Square Customer ${squareId.slice(-6)}`;
-  const legalName = companyName || displayName;
 
   const addressParts = [
     address?.address_line_1, address?.address_line_2,
@@ -29,101 +28,88 @@ function mapCustomer(customer: any) {
   ].filter(Boolean);
 
   return {
-    squareId,
-    legalName,
+    squareCustomerId: squareId,
+    legalName: companyName || displayName,
     displayName,
     billingContactName: [givenName, familyName].filter(Boolean).join(' ') || null,
     billingContactEmail: email || null,
     billingContactPhone: phone || null,
     billingAddress: addressParts.length > 0 ? addressParts.join(', ') : null,
     notes: note || null,
+    active: true,
   };
 }
 
-// POST - import Square customers one page at a time
-export async function POST(request: Request) {
+// POST - bulk import all Square customers
+export async function POST() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user || (session.user as any)?.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Accept optional cursor to resume pagination
-    const body = await request.json().catch(() => ({}));
-    const inputCursor = body?.cursor ?? null;
+    // Fetch ALL customers from Square (paginate through all pages)
+    const allCustomers: any[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listSquareCustomers(cursor);
+      allCustomers.push(...page.customers);
+      cursor = page.cursor ?? undefined;
+    } while (cursor);
 
-    console.log('Square import: fetching page', inputCursor ? `(cursor: ${inputCursor.slice(0, 20)}...)` : '(first page)');
-    const page = await listSquareCustomers(inputCursor || undefined);
-    const customers = page.customers;
-    console.log(`Square import: got ${customers.length} customers`);
+    console.log(`Fetched ${allCustomers.length} total customers from Square`);
 
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
-    const errors: Array<{ customerId: string; error: string }> = [];
+    // Map all customers
+    const mapped = allCustomers
+      .map(mapCustomer)
+      .filter((c) => !!c.squareCustomerId);
 
-    // Batch lookup existing
-    const squareIds = customers.map((c: any) => c?.id).filter(Boolean);
+    // Get all existing Square customer IDs in one query
     const existingAccounts = await prisma.parentAccount.findMany({
-      where: { squareCustomerId: { in: squareIds } },
+      where: { squareCustomerId: { in: mapped.map((c) => c.squareCustomerId) } },
       select: { id: true, squareCustomerId: true },
     });
-    const existingMap = new Map(existingAccounts.map((a) => [a.squareCustomerId, a.id]));
+    const existingIds = new Set(existingAccounts.map((a) => a.squareCustomerId));
 
-    // Process in parallel batches of 10
-    for (let i = 0; i < customers.length; i += 10) {
-      const batch = customers.slice(i, i + 10);
-      await Promise.all(batch.map(async (customer: any) => {
-        try {
-          const mapped = mapCustomer(customer);
-          if (!mapped.squareId) { skipped++; return; }
+    // Split into new vs existing
+    const toCreate = mapped.filter((c) => !existingIds.has(c.squareCustomerId));
+    const toUpdate = mapped.filter((c) => existingIds.has(c.squareCustomerId));
 
-          const existingId = existingMap.get(mapped.squareId);
-          if (existingId) {
-            await prisma.parentAccount.update({
-              where: { id: existingId },
-              data: {
-                displayName: mapped.displayName,
-                legalName: mapped.legalName,
-                billingContactName: mapped.billingContactName,
-                billingContactEmail: mapped.billingContactEmail,
-                billingContactPhone: mapped.billingContactPhone,
-                billingAddress: mapped.billingAddress,
-                notes: mapped.notes,
-              },
-            });
-            updated++;
-          } else {
-            await prisma.parentAccount.create({
-              data: {
-                legalName: mapped.legalName,
-                displayName: mapped.displayName,
-                billingContactName: mapped.billingContactName,
-                billingContactEmail: mapped.billingContactEmail,
-                billingContactPhone: mapped.billingContactPhone,
-                billingAddress: mapped.billingAddress,
-                squareCustomerId: mapped.squareId,
-                notes: mapped.notes,
-                active: true,
-              },
-            });
-            created++;
-          }
-        } catch (err: any) {
-          errors.push({ customerId: customer?.id ?? 'unknown', error: err?.message ?? 'Unknown error' });
-        }
-      }));
+    // Bulk create all new customers in one DB call
+    let created = 0;
+    if (toCreate.length > 0) {
+      const result = await prisma.parentAccount.createMany({
+        data: toCreate,
+        skipDuplicates: true,
+      });
+      created = result.count;
+      console.log(`Bulk created ${created} new accounts`);
+    }
+
+    // Batch update existing (no createMany equivalent, but we can use a transaction)
+    let updated = 0;
+    if (toUpdate.length > 0) {
+      const existingMap = new Map(existingAccounts.map((a) => [a.squareCustomerId, a.id]));
+      const updateOps = toUpdate.map((c) => {
+        const id = existingMap.get(c.squareCustomerId)!;
+        const { squareCustomerId, active, ...data } = c;
+        return prisma.parentAccount.update({ where: { id }, data });
+      });
+      // Run updates in batches of 50 within a transaction
+      for (let i = 0; i < updateOps.length; i += 50) {
+        const batch = updateOps.slice(i, i + 50);
+        await prisma.$transaction(batch);
+        updated += batch.length;
+      }
+      console.log(`Updated ${updated} existing accounts`);
     }
 
     return NextResponse.json({
       success: true,
+      totalFromSquare: allCustomers.length,
       created,
       updated,
-      skipped,
-      pageCount: customers.length,
-      nextCursor: page.cursor,
-      hasMore: !!page.cursor,
-      errors: errors.length > 0 ? errors : undefined,
+      skipped: mapped.length - created - updated,
     });
   } catch (error: any) {
     console.error('Square customer import error:', error);
@@ -134,7 +120,7 @@ export async function POST(request: Request) {
   }
 }
 
-// GET - fetch first page count (quick preview)
+// GET - quick preview
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -142,10 +128,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('Square preview: fetching first page...');
     const page = await listSquareCustomers();
-    console.log(`Square preview: got ${page.customers.length} customers, hasMore: ${!!page.cursor}`);
-
     const squareIds = page.customers.map((c: any) => c?.id).filter(Boolean);
     const existingCount = await prisma.parentAccount.count({
       where: { squareCustomerId: { in: squareIds } },

@@ -139,28 +139,16 @@ export function AccountsClient() {
   const handleSquareImport = async () => {
     setSquareImportLoading(true);
     setSquareImportResults(null);
-    let totalCreated = 0, totalUpdated = 0, totalSkipped = 0;
-    let cursor: string | null = null;
-    let pageNum = 0;
     try {
-      do {
-        pageNum++;
-        toast.info(`Importing page ${pageNum}...`);
-        const res = await fetch('/api/square/import-customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cursor }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) { toast.error(data?.error ?? 'Import failed'); break; }
-        totalCreated += data?.created ?? 0;
-        totalUpdated += data?.updated ?? 0;
-        totalSkipped += data?.skipped ?? 0;
-        cursor = data?.nextCursor ?? null;
-      } while (cursor);
-      setSquareImportResults({ created: totalCreated, updated: totalUpdated, skipped: totalSkipped });
-      toast.success(`Imported ${totalCreated} new accounts, updated ${totalUpdated}`);
-      loadAccounts();
+      const res = await fetch('/api/square/import-customers', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSquareImportResults(data);
+        toast.success(`Imported ${data?.created ?? 0} new, updated ${data?.updated ?? 0}`);
+        loadAccounts();
+      } else {
+        toast.error(data?.error ?? 'Import failed');
+      }
     } catch {
       toast.error('Square import failed');
     } finally {

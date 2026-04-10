@@ -13,11 +13,23 @@ function isAuthorized(request: Request) {
   return expected && secret === expected;
 }
 
-// POST - calculate lifetime values from Square order history
+// POST - calculate lifetime values from Square order history and store individual orders.
 // Processes up to BATCH_LIMIT accounts per invocation to stay within Vercel timeout.
-// Prioritizes accounts that have never been synced (lifetimeValueCents = 0, orderCount = 0).
-// Call repeatedly (or via nightly cron) until all accounts are caught up.
-const BATCH_LIMIT = 100; // ~100 accounts in <10s with concurrency of 5 (well within 60s Vercel limit)
+// Only fetches accounts not yet synced (orderCount=0, lifetimeValueCents=0).
+// Call repeatedly until totalUnsyncedRemaining reaches 0.
+const BATCH_LIMIT = 100;
+
+// Map a Square order's line items to a compact, storable format
+function mapLineItems(squareOrder: any): any[] {
+  const items = squareOrder?.line_items ?? [];
+  return items.map((item: any) => ({
+    name: item?.name ?? 'Item',
+    quantity: Number(item?.quantity ?? 1),
+    unitCents: item?.base_price_money?.amount ?? 0,
+    totalCents: item?.gross_sales_money?.amount ?? item?.total_money?.amount ?? 0,
+    catalogObjectId: item?.catalog_object_id ?? null,
+  }));
+}
 
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
@@ -33,32 +45,28 @@ export async function POST(request: Request) {
     if (!locationIds.length) {
       return NextResponse.json({ error: 'No Square locations found' }, { status: 500 });
     }
-    console.log(`[LTV Sync] Found ${locationIds.length} Square locations`);
 
     // Count total remaining unsynced
     const totalUnsynced = await prisma.parentAccount.count({
       where: { squareCustomerId: { not: null }, active: true, orderCount: 0, lifetimeValueCents: 0 },
     });
 
-    // Only fetch accounts not yet synced (orderCount=0, lifetimeValueCents=0)
-    // Accounts with orderCount=-1 have been checked and had no orders — skip them
+    // Fetch next batch of unsynced accounts
     const accounts = await prisma.parentAccount.findMany({
       where: { squareCustomerId: { not: null }, active: true, orderCount: 0, lifetimeValueCents: 0 },
-      select: { id: true, squareCustomerId: true, displayName: true, orderCount: true, lifetimeValueCents: true },
-      orderBy: [
-        { id: 'asc' }, // stable ordering
-      ],
+      select: { id: true, squareCustomerId: true, displayName: true },
+      orderBy: [{ id: 'asc' }],
       take: BATCH_LIMIT,
     });
 
-    console.log(`[LTV Sync] Processing batch of ${accounts.length} accounts (${totalUnsynced} total unsynced remaining)...`);
+    console.log(`[LTV Sync] Processing batch of ${accounts.length} (${totalUnsynced} total unsynced)...`);
     let updated = 0;
     let skipped = 0;
     const errors: any[] = [];
 
-    // Process in concurrent batches of 5 (conservative to avoid Square rate limits)
+    // Process in concurrent batches of 5
     for (let i = 0; i < accounts.length; i += 5) {
-      // Safety: bail out if we're approaching the 60s timeout (leave 5s buffer)
+      // Safety: bail if approaching 60s timeout
       if (Date.now() - startTime > 40000) {
         console.log(`[LTV Sync] Approaching timeout, stopping at ${i}/${accounts.length}`);
         break;
@@ -82,8 +90,8 @@ export async function POST(request: Request) {
             }
           }
 
-          // Only write to DB if there's something to update
           if (totalCents > 0 || orders.length > 0) {
+            // Update account summary
             await prisma.parentAccount.update({
               where: { id: account.id },
               data: {
@@ -92,10 +100,31 @@ export async function POST(request: Request) {
                 lastOrderAt: lastOrderDate,
               },
             });
+
+            // Upsert individual SquareOrder records
+            if (orders.length > 0) {
+              const orderUpserts = orders
+                .filter((o: any) => !!o?.id)
+                .map((o: any) => {
+                  const rawDate = o?.closed_at ?? o?.created_at ?? new Date().toISOString();
+                  const primaryLocationId = o?.location_id ?? locationIds[0] ?? null;
+                  return prisma.$executeRawUnsafe(
+                    `INSERT INTO square_orders (id, square_order_id, parent_account_id, order_date, total_cents, line_items, location_id)
+                     VALUES (gen_random_uuid()::text, $1, $2, $3::timestamptz, $4, $5::jsonb, $6)
+                     ON CONFLICT (square_order_id) DO NOTHING`,
+                    o.id,
+                    account.id,
+                    rawDate,
+                    o?.total_money?.amount ?? 0,
+                    JSON.stringify(mapLineItems(o)),
+                    primaryLocationId,
+                  );
+                });
+              await Promise.all(orderUpserts);
+            }
             updated++;
           } else {
-            // Mark as synced even with 0 orders so we don't re-check next time
-            // Use orderCount = -1 as a "checked, no orders" sentinel
+            // Mark as checked (no orders) so we don't re-process
             await prisma.parentAccount.update({
               where: { id: account.id },
               data: { orderCount: -1 },
@@ -106,10 +135,6 @@ export async function POST(request: Request) {
           errors.push({ accountId: account.id, name: account.displayName, error: err?.message });
         }
       }));
-
-      if (i % 50 === 0 && i > 0) {
-        console.log(`[LTV Sync] Progress: ${i}/${accounts.length} processed, ${updated} updated, ${skipped} no orders`);
-      }
     }
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);

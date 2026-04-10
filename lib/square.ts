@@ -380,3 +380,23 @@ export async function publishSquareInvoice(invoiceId: string, version: number) {
 export async function getSquareLocations() {
   return squareFetch('/locations', { method: 'GET' });
 }
+
+// Fetch ALL customers from Square with pagination
+export async function listAllSquareCustomers() {
+  const allCustomers: any[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const body: any = { limit: 100 };
+    if (cursor) body.cursor = cursor;
+
+    const data = await squareFetch('/customers/search', {
+      method: 'POST',
+      body: JSON.stringify({ query: { filter: {}, sort: { field: 'CREATED_AT', order: 'ASC' } }, limit: 100, ...(cursor ? { cursor } : {}) }),
+    });
+    allCustomers.push(...(data?.customers ?? []));
+    cursor = data?.cursor;
+  } while (cursor);
+
+  return allCustomers;
+}

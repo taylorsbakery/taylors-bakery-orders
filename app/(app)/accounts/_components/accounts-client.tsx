@@ -110,6 +110,52 @@ export function AccountsClient() {
   const [csvResults, setCsvResults] = useState<any>(null);
   const [csvPreview, setCsvPreview] = useState<{ headers: string[]; rows: string[][]; rawText: string } | null>(null);
 
+  // Square Import
+  const [squareImportOpen, setSquareImportOpen] = useState(false);
+  const [squareImportLoading, setSquareImportLoading] = useState(false);
+  const [squarePreview, setSquarePreview] = useState<any>(null);
+  const [squareImportResults, setSquareImportResults] = useState<any>(null);
+  const [squarePreviewLoading, setSquarePreviewLoading] = useState(false);
+
+  const handleSquarePreview = async () => {
+    setSquarePreviewLoading(true);
+    setSquarePreview(null);
+    setSquareImportResults(null);
+    try {
+      const res = await fetch('/api/square/import-customers');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSquarePreview(data);
+      } else {
+        toast.error(data?.error ?? 'Failed to preview Square customers');
+      }
+    } catch {
+      toast.error('Failed to connect to Square');
+    } finally {
+      setSquarePreviewLoading(false);
+    }
+  };
+
+  const handleSquareImport = async () => {
+    setSquareImportLoading(true);
+    setSquareImportResults(null);
+    try {
+      const res = await fetch('/api/square/import-customers', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSquareImportResults(data);
+        toast.success(`Imported ${data?.created ?? 0} new accounts, updated ${data?.updated ?? 0}`);
+        loadAccounts();
+      } else {
+        toast.error(data?.error ?? 'Import failed');
+      }
+    } catch {
+      toast.error('Square import failed');
+    } finally {
+      setSquareImportLoading(false);
+    }
+  };
+
   const handleCSVFileSelect = (file: File) => {
     if (!file) return;
     const reader = new FileReader();
@@ -301,6 +347,74 @@ export function AccountsClient() {
                       <p><strong>Location fields:</strong> location_name, delivery_contact_name, delivery_contact_email, delivery_contact_phone, delivery_address, delivery_instructions</p>
                       <p><strong>Multiple locations:</strong> Use multiple rows with the same legal_name — each row with a unique location_name becomes a child location.</p>
                       <p><strong>Dedup:</strong> Existing accounts (matched by legal name or email) are skipped, but new locations are still added.</p>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={squareImportOpen} onOpenChange={(open) => { setSquareImportOpen(open); if (!open) { setSquarePreview(null); setSquareImportResults(null); } }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" onClick={() => { setSquareImportOpen(true); handleSquarePreview(); }}><RefreshCw className="w-4 h-4" /> Import from Square</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2"><RefreshCw className="w-5 h-5" /> Import Customers from Square</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">Pull all customers from your Square account into the bakery ordering system. Existing customers (matched by Square ID) will be updated with the latest info.</p>
+
+                  {squarePreviewLoading && (
+                    <div className="flex items-center gap-2 p-4 bg-muted/50 rounded-lg">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm text-foreground">Loading Square customers...</span>
+                    </div>
+                  )}
+
+                  {squarePreview && !squareImportResults && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="p-3 bg-muted/50 rounded-lg text-center">
+                          <div className="text-2xl font-bold text-foreground">{squarePreview?.totalInSquare ?? 0}</div>
+                          <div className="text-xs text-muted-foreground">Total in Square</div>
+                        </div>
+                        <div className="p-3 bg-muted/50 rounded-lg text-center">
+                          <div className="text-2xl font-bold text-foreground">{squarePreview?.existingInDb ?? 0}</div>
+                          <div className="text-xs text-muted-foreground">Already in DB</div>
+                        </div>
+                        <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-center">
+                          <div className="text-2xl font-bold text-blue-600">{squarePreview?.wouldCreate ?? 0}</div>
+                          <div className="text-xs text-muted-foreground">New to create</div>
+                        </div>
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg text-center">
+                          <div className="text-2xl font-bold text-amber-600">{squarePreview?.wouldUpdate ?? 0}</div>
+                          <div className="text-xs text-muted-foreground">To update</div>
+                        </div>
+                      </div>
+                      <Button className="w-full" onClick={handleSquareImport} disabled={squareImportLoading || (squarePreview?.totalInSquare ?? 0) === 0}>
+                        {squareImportLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</> : <><RefreshCw className="w-4 h-4" /> Import {squarePreview?.totalInSquare ?? 0} Customers</>}
+                      </Button>
+                    </div>
+                  )}
+
+                  {squareImportResults && (
+                    <div className="space-y-3 p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <p className="font-semibold text-green-800 dark:text-green-300">Import Complete</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-sm text-center">
+                        <div className="text-foreground"><span className="font-bold">{squareImportResults?.created ?? 0}</span><br />created</div>
+                        <div className="text-foreground"><span className="font-bold">{squareImportResults?.updated ?? 0}</span><br />updated</div>
+                        <div className="text-foreground"><span className="font-bold">{squareImportResults?.skipped ?? 0}</span><br />skipped</div>
+                      </div>
+                      {(squareImportResults?.errors ?? []).length > 0 && (
+                        <div className="mt-2 text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                          {(squareImportResults.errors as any[]).slice(0, 5).map((err: any, i: number) => <p key={i}>Warning: {err?.error ?? 'Unknown'}</p>)}
+                        </div>
+                      )}
+                      <Button variant="outline" className="w-full mt-2" onClick={() => { setSquareImportOpen(false); setSquarePreview(null); setSquareImportResults(null); }}>
+                        Done
+                      </Button>
                     </div>
                   )}
                 </div>

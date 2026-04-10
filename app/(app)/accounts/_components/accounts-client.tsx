@@ -22,6 +22,10 @@ export function AccountsClient() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalAccounts, setTotalAccounts] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [form, setForm] = useState<any>({
@@ -30,38 +34,36 @@ export function AccountsClient() {
     defaultBillingTerms: 'NET_30', taxExempt: false, notes: '',
   });
 
-  const loadAccounts = () => {
-    fetch('/api/accounts')
+  const loadAccounts = (p?: number, q?: string) => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    params.set('page', String(p ?? page));
+    params.set('limit', '50');
+    if ((q ?? search)) params.set('search', q ?? search);
+    fetch(`/api/accounts?${params.toString()}`)
       .then((r: any) => r?.json?.())
-      .then((d: any) => setAccounts(Array.isArray(d) ? d : []))
+      .then((d: any) => {
+        setAccounts(d?.accounts ?? (Array.isArray(d) ? d : []));
+        setTotalPages(d?.totalPages ?? 1);
+        setTotalAccounts(d?.total ?? 0);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadAccounts(); }, []);
+  useEffect(() => { loadAccounts(1, ''); }, []);
 
-  const filtered = (accounts ?? []).filter((a: any) => {
-    const q = search?.toLowerCase?.() ?? '';
-    if (!q) return true;
-    // Normalize phone digits for numeric search
-    const qDigits = q.replace(/\D/g, '');
-    const phoneMatch = qDigits.length >= 3 && (
-      (a?.billingContactPhone ?? '').replace(/\D/g, '').includes(qDigits) ||
-      (a?.childLocations ?? []).some((loc: any) => (loc?.deliveryContactPhone ?? '').replace(/\D/g, '').includes(qDigits))
-    );
-    return (
-      (a?.displayName ?? '')?.toLowerCase?.()?.includes?.(q) ||
-      (a?.legalName ?? '')?.toLowerCase?.()?.includes?.(q) ||
-      (a?.billingContactEmail ?? '')?.toLowerCase?.()?.includes?.(q) ||
-      (a?.billingContactName ?? '')?.toLowerCase?.()?.includes?.(q) ||
-      phoneMatch ||
-      (a?.childLocations ?? []).some((loc: any) =>
-        (loc?.locationName ?? '').toLowerCase().includes(q) ||
-        (loc?.deliveryContactName ?? '').toLowerCase().includes(q) ||
-        (loc?.deliveryContactEmail ?? '').toLowerCase().includes(q)
-      )
-    );
-  });
+  // Debounced server-side search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+      loadAccounts(1, searchInput);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const filtered = accounts;
 
   const handleCreate = async () => {
     if (!form?.legalName) { toast.error('Legal name required'); return; }
@@ -506,7 +508,7 @@ export function AccountsClient() {
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Search by name, email, phone..." value={search} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e?.target?.value ?? '')} className="pl-10" />
+        <Input placeholder="Search by name, email, phone..." value={searchInput} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e?.target?.value ?? '')} className="pl-10" />
       </div>
 
       <FadeIn>
@@ -547,6 +549,24 @@ export function AccountsClient() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-sm text-muted-foreground">
+              Showing {((page - 1) * 50) + 1}–{Math.min(page * 50, totalAccounts)} of {totalAccounts.toLocaleString()} accounts
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { const p = page - 1; setPage(p); loadAccounts(p); }}>
+                Previous
+              </Button>
+              <span className="flex items-center text-sm px-2">Page {page} of {totalPages.toLocaleString()}</span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { const p = page + 1; setPage(p); loadAccounts(p); }}>
+                Next
+              </Button>
+            </div>
           </div>
         )}
       </FadeIn>

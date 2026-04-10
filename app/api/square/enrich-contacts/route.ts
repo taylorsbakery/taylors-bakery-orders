@@ -175,6 +175,11 @@ export async function POST(request: Request) {
       const { isDecisionMaker, decisionMakerType } = classifyDecisionMaker(jobTitle, role, seniority);
       if (isDecisionMaker) decisionMakers++;
 
+      // Only stamp enrichedAt when we actually attempted a lookup.
+      // If no API key is configured, leave enrichedAt null so accounts can be
+      // re-processed once a key is added.
+      const shouldStamp = clearbitEnabled;
+
       await prisma.parentAccount.update({
         where: { id: account.id },
         data: {
@@ -182,8 +187,7 @@ export async function POST(request: Request) {
           seniority: seniority ?? undefined,
           isDecisionMaker,
           decisionMakerType: decisionMakerType ?? undefined,
-          enrichedAt: new Date(),
-          enrichmentSource,
+          ...(shouldStamp ? { enrichedAt: new Date(), enrichmentSource } : {}),
         },
       });
 
@@ -191,8 +195,6 @@ export async function POST(request: Request) {
         enriched++;
       } else {
         noData++;
-        // Still mark as enriched so we don't keep retrying with no API key
-        // enrichedAt was set above
       }
     } catch (err: any) {
       errors.push({ accountId: account.id, error: err?.message });

@@ -506,70 +506,107 @@ export function AccountsClient() {
         }
       />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Search by name, email, phone..." value={searchInput} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e?.target?.value ?? '')} className="pl-10" />
-      </div>
-
-      <FadeIn>
-        {loading ? <p className="text-muted-foreground">Loading...</p> : filtered?.length === 0 ? (
-          <Card><CardContent className="py-12 text-center">
-            <Building2 className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-            <p className="text-muted-foreground">No accounts found</p>
-          </CardContent></Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filtered.map((acct: any) => (
-              <Card key={acct?.id ?? Math.random()} className="hover:shadow-md transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <Link href={`/accounts/${acct?.id ?? ''}`}>
-                        <h3 className="font-semibold text-lg hover:text-primary transition-colors">{acct?.displayName ?? acct?.legalName ?? ''}</h3>
-                      </Link>
-                      {acct?.billingContactEmail && <p className="text-sm text-muted-foreground flex items-center gap-1"><Mail className="w-3 h-3" /> {acct.billingContactEmail}</p>}
-                      {acct?.billingContactPhone && <p className="text-sm text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" /> {acct.billingContactPhone}</p>}
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        <Badge variant="outline" className="text-xs">{(acct?.childLocations?.length ?? 0)} locations</Badge>
-                        {acct?.squareCustomerId && <Badge variant="secondary" className="text-xs">Square Synced</Badge>}
-                        {acct?.taxExempt && <Badge variant="secondary" className="text-xs">Tax Exempt</Badge>}
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      {role === 'admin' && (
-                        <Button variant="ghost" size="icon-sm" onClick={() => handleSyncSquare(acct?.id ?? '')} title="Sync to Square">
-                          <RefreshCw className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Link href={`/accounts/${acct?.id ?? ''}`}>
-                        <Button variant="ghost" size="icon-sm"><ChevronRight className="w-4 h-4" /></Button>
-                      </Link>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4">
-            <p className="text-sm text-muted-foreground">
-              Showing {((page - 1) * 50) + 1}–{Math.min(page * 50, totalAccounts)} of {totalAccounts.toLocaleString()} accounts
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { const p = page - 1; setPage(p); loadAccounts(p); }}>
-                Previous
-              </Button>
-              <span className="flex items-center text-sm px-2">Page {page} of {totalPages.toLocaleString()}</span>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { const p = page + 1; setPage(p); loadAccounts(p); }}>
-                Next
-              </Button>
+      {/* Search bar */}
+      <Card>
+        <CardContent className="py-3">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Search accounts by name, email, or phone..." value={searchInput} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchInput(e?.target?.value ?? '')} className="pl-10" />
             </div>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">{totalAccounts.toLocaleString()} accounts</span>
           </div>
-        )}
-      </FadeIn>
+        </CardContent>
+      </Card>
+
+      {/* Accounts table */}
+      <Card>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mr-2" />
+              <span className="text-muted-foreground">Loading accounts...</span>
+            </div>
+          ) : filtered?.length === 0 ? (
+            <div className="py-12 text-center">
+              <Building2 className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground">{searchInput ? 'No accounts match your search' : 'No accounts found'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="text-left py-2.5 px-4 font-medium text-muted-foreground">Account Name</th>
+                    <th className="text-left py-2.5 px-4 font-medium text-muted-foreground hidden md:table-cell">Contact</th>
+                    <th className="text-left py-2.5 px-4 font-medium text-muted-foreground hidden lg:table-cell">Email</th>
+                    <th className="text-left py-2.5 px-4 font-medium text-muted-foreground hidden lg:table-cell">Phone</th>
+                    <th className="text-center py-2.5 px-4 font-medium text-muted-foreground hidden sm:table-cell">Locations</th>
+                    <th className="text-center py-2.5 px-4 font-medium text-muted-foreground hidden sm:table-cell">Status</th>
+                    <th className="text-right py-2.5 px-2 font-medium text-muted-foreground w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((acct: any) => (
+                    <tr key={acct?.id ?? Math.random()} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="py-2.5 px-4">
+                        <Link href={`/accounts/${acct?.id ?? ''}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                          {acct?.displayName ?? acct?.legalName ?? '—'}
+                        </Link>
+                        {acct?.legalName && acct?.legalName !== acct?.displayName && (
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">{acct.legalName}</p>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">
+                        {acct?.billingContactName ?? '—'}
+                      </td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">
+                        <span className="truncate block max-w-[200px]">{acct?.billingContactEmail ?? '—'}</span>
+                      </td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell whitespace-nowrap">
+                        {acct?.billingContactPhone ?? '—'}
+                      </td>
+                      <td className="py-2.5 px-4 text-center hidden sm:table-cell">
+                        <Badge variant="outline" className="text-xs">{acct?.childLocations?.length ?? 0}</Badge>
+                      </td>
+                      <td className="py-2.5 px-4 text-center hidden sm:table-cell">
+                        {acct?.squareCustomerId ? (
+                          <Badge variant="secondary" className="text-xs">Square</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Local</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2 text-right">
+                        <Link href={`/accounts/${acct?.id ?? ''}`}>
+                          <Button variant="ghost" size="icon-sm"><ChevronRight className="w-4 h-4" /></Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
+              <p className="text-xs text-muted-foreground">
+                {((page - 1) * 50) + 1}–{Math.min(page * 50, totalAccounts)} of {totalAccounts.toLocaleString()}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { const p = page - 1; setPage(p); loadAccounts(p); }}>
+                  Previous
+                </Button>
+                <span className="text-xs text-muted-foreground px-1">Page {page}/{totalPages.toLocaleString()}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { const p = page + 1; setPage(p); loadAccounts(p); }}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -28,49 +28,52 @@ export async function POST(request: Request) {
     }
     console.log(`[LTV Sync] Found ${locationIds.length} Square locations`);
 
-    // Get accounts that have a Square customer ID, process in batches
-    // Start with accounts that haven't been updated recently or have 0 lifetime value
-    const url = new URL(request.url);
-    const batchSize = parseInt(url.searchParams.get('batch') ?? '50', 10);
+    // Get ALL accounts with a Square customer ID
     const accounts = await prisma.parentAccount.findMany({
       where: { squareCustomerId: { not: null }, active: true },
       select: { id: true, squareCustomerId: true, displayName: true },
-      orderBy: { updatedAt: 'asc' }, // oldest updated first
-      take: Math.min(batchSize, 100),
     });
 
     console.log(`[LTV Sync] Processing ${accounts.length} accounts...`);
     let updated = 0;
     const errors: any[] = [];
 
-    for (const account of accounts) {
-      try {
-        const orders = await searchOrdersForCustomer(account.squareCustomerId!, locationIds);
+    // Process in batches of 10 concurrently
+    for (let i = 0; i < accounts.length; i += 10) {
+      const batch = accounts.slice(i, i + 10);
+      await Promise.all(batch.map(async (account) => {
+        try {
+          const orders = await searchOrdersForCustomer(account.squareCustomerId!, locationIds);
 
-        let totalCents = 0;
-        let lastOrderDate: Date | null = null;
+          let totalCents = 0;
+          let lastOrderDate: Date | null = null;
 
-        for (const order of orders) {
-          const amount = order?.total_money?.amount ?? 0;
-          totalCents += amount;
-          const orderDate = order?.closed_at ?? order?.created_at;
-          if (orderDate) {
-            const d = new Date(orderDate);
-            if (!lastOrderDate || d > lastOrderDate) lastOrderDate = d;
+          for (const order of orders) {
+            const amount = order?.total_money?.amount ?? 0;
+            totalCents += amount;
+            const orderDate = order?.closed_at ?? order?.created_at;
+            if (orderDate) {
+              const d = new Date(orderDate);
+              if (!lastOrderDate || d > lastOrderDate) lastOrderDate = d;
+            }
           }
-        }
 
-        await prisma.parentAccount.update({
-          where: { id: account.id },
-          data: {
-            lifetimeValueCents: totalCents,
-            orderCount: orders.length,
-            lastOrderAt: lastOrderDate,
-          },
-        });
-        updated++;
-      } catch (err: any) {
-        errors.push({ accountId: account.id, name: account.displayName, error: err?.message });
+          await prisma.parentAccount.update({
+            where: { id: account.id },
+            data: {
+              lifetimeValueCents: totalCents,
+              orderCount: orders.length,
+              lastOrderAt: lastOrderDate,
+            },
+          });
+          updated++;
+        } catch (err: any) {
+          errors.push({ accountId: account.id, name: account.displayName, error: err?.message });
+        }
+      }));
+
+      if (i % 500 === 0 && i > 0) {
+        console.log(`[LTV Sync] Progress: ${i}/${accounts.length} processed, ${updated} updated`);
       }
     }
 

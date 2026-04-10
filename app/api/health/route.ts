@@ -17,8 +17,10 @@ export async function GET() {
   // Test database connection
   try {
     const userCount = await prisma.user.count();
+    const accountCount = await prisma.parentAccount.count();
     checks.database = 'CONNECTED';
     checks.userCount = userCount;
+    checks.accountCount = accountCount;
   } catch (error: any) {
     checks.database = 'FAILED';
     checks.dbError = error?.message ?? 'Unknown error';

@@ -386,7 +386,7 @@ export function AccountsClient() {
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div className="p-3 bg-muted/50 rounded-lg text-center">
-                          <div className="text-2xl font-bold text-foreground">{squarePreview?.totalInSquare ?? 0}</div>
+                          <div className="text-2xl font-bold text-foreground">{squarePreview?.totalInPage ?? 0}</div>
                           <div className="text-xs text-muted-foreground">Total in Square</div>
                         </div>
                         <div className="p-3 bg-muted/50 rounded-lg text-center">
@@ -402,8 +402,8 @@ export function AccountsClient() {
                           <div className="text-xs text-muted-foreground">To update</div>
                         </div>
                       </div>
-                      <Button className="w-full" onClick={handleSquareImport} disabled={squareImportLoading || (squarePreview?.totalInSquare ?? 0) === 0}>
-                        {squareImportLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</> : <><RefreshCw className="w-4 h-4" /> Import {squarePreview?.totalInSquare ?? 0} Customers</>}
+                      <Button className="w-full" onClick={handleSquareImport} disabled={squareImportLoading || (squarePreview?.totalInPage ?? 0) === 0}>
+                        {squareImportLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</> : <><RefreshCw className="w-4 h-4" /> Import {squarePreview?.totalInPage ?? 0} Customers</>}
                       </Button>
                     </div>
                   )}

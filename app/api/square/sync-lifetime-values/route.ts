@@ -40,13 +40,13 @@ export async function POST(request: Request) {
       where: { squareCustomerId: { not: null }, active: true, orderCount: 0, lifetimeValueCents: 0 },
     });
 
-    // Prioritize accounts never synced (orderCount=0, lifetimeValueCents=0), then oldest synced
+    // Only fetch accounts not yet synced (orderCount=0, lifetimeValueCents=0)
+    // Accounts with orderCount=-1 have been checked and had no orders — skip them
     const accounts = await prisma.parentAccount.findMany({
-      where: { squareCustomerId: { not: null }, active: true },
+      where: { squareCustomerId: { not: null }, active: true, orderCount: 0, lifetimeValueCents: 0 },
       select: { id: true, squareCustomerId: true, displayName: true, orderCount: true, lifetimeValueCents: true },
       orderBy: [
-        { orderCount: 'asc' },        // 0-order accounts first (never synced)
-        { lifetimeValueCents: 'asc' }, // then lowest value
+        { id: 'asc' }, // stable ordering
       ],
       take: BATCH_LIMIT,
     });

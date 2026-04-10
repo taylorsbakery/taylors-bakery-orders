@@ -17,7 +17,7 @@ function isAuthorized(request: Request) {
 // Processes up to BATCH_LIMIT accounts per invocation to stay within Vercel timeout.
 // Prioritizes accounts that have never been synced (lifetimeValueCents = 0, orderCount = 0).
 // Call repeatedly (or via nightly cron) until all accounts are caught up.
-const BATCH_LIMIT = 200; // ~200 accounts in <55s with concurrency of 5
+const BATCH_LIMIT = 50; // ~50 accounts in <15s with concurrency of 5 (well within 60s Vercel limit)
 
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     // Process in concurrent batches of 5 (conservative to avoid Square rate limits)
     for (let i = 0; i < accounts.length; i += 5) {
       // Safety: bail out if we're approaching the 60s timeout (leave 5s buffer)
-      if (Date.now() - startTime > 54000) {
+      if (Date.now() - startTime > 40000) {
         console.log(`[LTV Sync] Approaching timeout, stopping at ${i}/${accounts.length}`);
         break;
       }

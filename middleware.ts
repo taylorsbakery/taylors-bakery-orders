@@ -12,6 +12,8 @@ const PUBLIC_PORTAL_API = [
   '/api/standing-orders/auto-submit',
   '/api/square/nightly-sync',
   '/api/square/sync-lifetime-values',
+  '/api/square/run-migration',
+  '/api/square/enrich-contacts',
   '/api/health',
 ];
 

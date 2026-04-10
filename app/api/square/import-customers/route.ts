@@ -140,6 +140,8 @@ export async function GET() {
     }
 
     console.log('Starting Square customer preview...');
+    console.log('SQUARE_ENVIRONMENT:', process.env.SQUARE_ENVIRONMENT ?? 'NOT SET');
+    console.log('SQUARE_PRODUCTION_ACCESS_TOKEN set:', !!process.env.SQUARE_PRODUCTION_ACCESS_TOKEN);
     const squareCustomers = await listAllSquareCustomers();
     console.log(`Found ${squareCustomers.length} customers in Square`);
 

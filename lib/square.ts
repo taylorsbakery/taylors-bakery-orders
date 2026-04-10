@@ -24,22 +24,38 @@ export function getSquareEnvironment() {
 
 async function squareFetch(endpoint: string, options: any = {}) {
   const config = getSquareConfig();
-  const url = `${config.baseUrl}${endpoint}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Square-Version': '2024-01-18',
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-      ...(options?.headers ?? {}),
-    },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error('Square API Error:', JSON.stringify(data));
-    throw new Error(data?.errors?.[0]?.detail ?? `Square API error: ${response.status}`);
+  if (!config.accessToken) {
+    throw new Error(`Square access token not configured (environment: ${config.environment})`);
   }
-  return data;
+  const url = `${config.baseUrl}${endpoint}`;
+  console.log(`[Square] ${options?.method ?? 'GET'} ${url}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Square-Version': '2024-01-18',
+        'Authorization': `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+        ...(options?.headers ?? {}),
+      },
+    });
+    clearTimeout(timeout);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error('Square API Error:', JSON.stringify(data));
+      throw new Error(data?.errors?.[0]?.detail ?? `Square API error: ${response.status}`);
+    }
+    return data;
+  } catch (err: any) {
+    clearTimeout(timeout);
+    if (err?.name === 'AbortError') {
+      throw new Error(`Square API timeout after 15s: ${url}`);
+    }
+    throw err;
+  }
 }
 
 function generateIdempotencyKey(): string {

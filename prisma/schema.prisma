@@ -49,6 +49,13 @@ model ParentAccount {
   lifetimeValueCents    Int      @default(0) @map("lifetime_value_cents") // Total order value from Square in cents
   orderCount            Int      @default(0) @map("order_count") // Total number of orders from Square
   lastOrderAt           DateTime? @map("last_order_at") // Date of most recent Square order
+  // Contact enrichment — populated by /api/square/enrich-contacts
+  jobTitle              String?  @map("job_title")            // e.g. "VP of HR", "Owner"
+  seniority             String?  @map("seniority")            // executive, director, manager, senior, mid, junior
+  isDecisionMaker       Boolean  @default(false) @map("is_decision_maker")
+  decisionMakerType     String?  @map("decision_maker_type")  // president, hr, owner, executive, procurement
+  enrichedAt            DateTime? @map("enriched_at")
+  enrichmentSource      String?  @map("enrichment_source")    // clearbit, manual
   active                Boolean  @default(true)
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
@@ -59,6 +66,7 @@ model ParentAccount {
   users                 User[]
   tickets               Ticket[]
   standingOrders        StandingOrder[]
+  squareOrders          SquareOrder[]
 
   @@map("parent_accounts")
 }
@@ -503,4 +511,22 @@ model StandingOrder {
   @@index([active])
   @@index([autoSubmit, nextAutoSubmitDate])
   @@map("standing_orders")
+}
+
+// Individual Square orders pulled during LTV sync
+model SquareOrder {
+  id              String   @id @default(cuid())
+  squareOrderId   String   @unique @map("square_order_id")
+  parentAccountId String   @map("parent_account_id")
+  parentAccount   ParentAccount @relation(fields: [parentAccountId], references: [id])
+  orderDate       DateTime @map("order_date")
+  totalCents      Int      @map("total_cents")
+  // Simplified line items: [{name, quantity, unitCents, totalCents, catalogObjectId}]
+  lineItems       Json?    @map("line_items")
+  locationId      String?  @map("location_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([parentAccountId])
+  @@index([orderDate])
+  @@map("square_orders")
 }

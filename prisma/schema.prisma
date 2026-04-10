@@ -1,0 +1,502 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  name          String
+  role          String    @default("customer") // admin, customer
+  parentAccountId String? @map("parent_account_id")
+  parentAccount ParentAccount? @relation(fields: [parentAccountId], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  orders        Order[]   @relation("CreatedByUser")
+  customerNotes CustomerNote[]
+  communicationLogs CommunicationLog[]
+  recordedPayments Payment[]
+  passwordResetTokens PasswordResetToken[]
+  assignedTickets  Ticket[]  @relation("AssignedTickets")
+  createdTickets   Ticket[]  @relation("CreatedTickets")
+  ticketComments   TicketComment[]
+  ticketMessages   TicketMessage[] @relation("SentByUser")
+  createdStandingOrders StandingOrder[] @relation("CreatedStandingOrders")
+
+  @@map("users")
+}
+
+model ParentAccount {
+  id                    String   @id @default(cuid())
+  legalName             String   @map("legal_name")
+  displayName           String   @map("display_name")
+  billingContactName    String?  @map("billing_contact_name")
+  billingContactEmail   String?  @map("billing_contact_email")
+  billingContactPhone   String?  @map("billing_contact_phone")
+  billingAddress        String?  @map("billing_address")
+  accountsPayableEmail  String?  @map("accounts_payable_email")
+  defaultBillingTerms   String   @default("NET_30") @map("default_billing_terms")
+  taxExempt             Boolean  @default(false) @map("tax_exempt")
+  notes                 String?  @db.Text
+  squareCustomerId      String?  @map("square_customer_id")
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  childLocations        ChildLocation[]
+  orders                Order[]
+  customerNotes         CustomerNote[]
+  communicationLogs     CommunicationLog[]
+  users                 User[]
+  tickets               Ticket[]
+  standingOrders        StandingOrder[]
+
+  @@map("parent_accounts")
+}
+
+model ChildLocation {
+  id                    String   @id @default(cuid())
+  parentAccountId       String   @map("parent_account_id")
+  parentAccount         ParentAccount @relation(fields: [parentAccountId], references: [id])
+  locationName          String   @map("location_name")
+  deliveryContactName   String?  @map("delivery_contact_name")
+  deliveryContactEmail  String?  @map("delivery_contact_email")
+  deliveryContactPhone  String?  @map("delivery_contact_phone")
+  deliveryAddress       String?  @map("delivery_address")
+  deliveryInstructions  String?  @map("delivery_instructions") @db.Text
+  notes                 String?  @db.Text
+  latitude              Float?
+  longitude             Float?
+  geocodedAt            DateTime? @map("geocoded_at")
+  squareCustomerId      String?  @map("square_customer_id")
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  orders                Order[]
+  customerNotes         CustomerNote[]
+  communicationLogs     CommunicationLog[]
+  standingOrders        StandingOrder[]
+
+  @@map("child_locations")
+}
+
+model CustomerNote {
+  id              String   @id @default(cuid())
+  parentAccountId String?  @map("parent_account_id")
+  parentAccount   ParentAccount? @relation(fields: [parentAccountId], references: [id])
+  childLocationId String?  @map("child_location_id")
+  childLocation   ChildLocation? @relation(fields: [childLocationId], references: [id])
+  noteText        String   @map("note_text") @db.Text
+  createdByUserId String   @map("created_by_user_id")
+  createdByUser   User     @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("customer_notes")
+}
+
+model Order {
+  id                String   @id @default(cuid())
+  parentAccountId   String   @map("parent_account_id")
+  parentAccount     ParentAccount @relation(fields: [parentAccountId], references: [id])
+  childLocationId   String   @map("child_location_id")
+  childLocation     ChildLocation @relation(fields: [childLocationId], references: [id])
+  orderNumber       String   @unique @map("order_number")
+  orderDate         DateTime @default(now()) @map("order_date")
+  deliveryDate      DateTime @map("delivery_date")
+  deliveryTime      String?  @map("delivery_time")
+  pickupOrDelivery  String   @default("delivery") @map("pickup_or_delivery")
+  deliveryAddress   String?  @map("delivery_address") @db.Text
+  customerPhone     String?  @map("customer_phone")
+  specialNotes      String?  @map("special_notes") @db.Text
+  billingTerms      String   @default("NET_30") @map("billing_terms")
+  billingMethod     String   @default("square") @map("billing_method") // square, special_portal, other
+  billingMethodNote String?  @map("billing_method_note") @db.Text
+  subtotal          Float    @default(0)
+  tax               Float    @default(0)
+  total             Float    @default(0)
+  squareOrderId     String?  @map("square_order_id")
+  squareInvoiceId   String?  @map("square_invoice_id")
+  status            String   @default("draft") // draft, submitted, confirmed, completed, cancelled
+  paymentStatus     String   @default("unpaid") @map("payment_status") // unpaid, partial, paid
+  amountPaid        Float    @default(0) @map("amount_paid")
+  deliveryStop      Int?     @map("delivery_stop")
+  deliveredAt       DateTime? @map("delivered_at")
+  deliveryNotes     String?  @map("delivery_notes") @db.Text
+  deliveryFee       Float    @default(0) @map("delivery_fee")
+  poNumber          String?  @map("po_number")
+  createdByUserId   String   @map("created_by_user_id")
+  createdByUser     User     @relation("CreatedByUser", fields: [createdByUserId], references: [id])
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  orderItems        OrderItem[]
+  payments          Payment[]
+  tickets           Ticket[]
+
+  @@index([parentAccountId])
+  @@index([childLocationId])
+  @@index([status])
+  @@index([deliveryDate])
+  @@index([paymentStatus])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                        String   @id @default(cuid())
+  orderId                   String   @map("order_id")
+  order                     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemType                  String   @map("item_type") // cake, standard
+  productName               String   @map("product_name")
+  quantity                  Int      @default(1)
+  unitPrice                 Float    @default(0) @map("unit_price")
+  totalPrice                Float    @default(0) @map("total_price")
+  cakeSize                  String?  @map("cake_size")
+  cakeFlavor                String?  @map("cake_flavor")
+  cakeIcing                 String?  @map("cake_icing")
+  cakeInscription           String?  @map("cake_inscription")
+  itemNotes                 String?  @map("item_notes") @db.Text
+  squareCatalogVariationId  String?  @map("square_catalog_variation_id")
+  imageCloudPath            String?  @map("image_cloud_path")
+  imageIsPublic             Boolean  @default(true) @map("image_is_public")
+  borderColor               String?  @map("border_color")
+  inscriptionColor          String?  @map("inscription_color")
+  imageTransform            Json?    @map("image_transform") // {x, y, scale, rotation}
+  scannedImageFee           Float    @default(0) @map("scanned_image_fee")
+  inscriptionPlacement      String?  @map("inscription_placement") // top, bottom, left, right, center, border
+  selectedModifiers         Json?    @map("selected_modifiers") // [{groupId, groupName, optionId, optionName, priceCents}]
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  @@map("order_items")
+}
+
+model CommunicationLog {
+  id              String   @id @default(cuid())
+  parentAccountId String   @map("parent_account_id")
+  parentAccount   ParentAccount @relation(fields: [parentAccountId], references: [id])
+  childLocationId String?  @map("child_location_id")
+  childLocation   ChildLocation? @relation(fields: [childLocationId], references: [id])
+  type            String   // email_sent, phone_call, meeting, follow_up, campaign
+  subject         String?
+  body            String?  @db.Text
+  recipientEmail  String?  @map("recipient_email")
+  templateUsed    String?  @map("template_used")
+  status          String   @default("sent") // sent, delivered, opened, failed
+  createdByUserId String   @map("created_by_user_id")
+  createdByUser   User     @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([parentAccountId])
+  @@index([createdAt])
+  @@map("communication_logs")
+}
+
+model Product {
+  id                        String   @id @default(cuid())
+  name                      String
+  description               String?  @db.Text
+  basePrice                 Float    @map("base_price")
+  category                  String   @default("standard")
+  squareCatalogItemId       String?  @map("square_catalog_item_id")
+  squareCatalogVariationId  String?  @map("square_catalog_variation_id")
+  variations                Json?    @default("[]")
+  active                    Boolean  @default(true)
+  portalVisible             Boolean  @default(false) @map("portal_visible")
+  commercialPriceCents      Int?     @map("commercial_price_cents")
+  commercialMinQty          Int      @default(1) @map("commercial_min_qty")
+  portalCategory            String?  @map("portal_category")
+  allowScannedImage         Boolean  @default(false) @map("allow_scanned_image")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  modifierGroups            ProductModifierGroup[]
+
+  @@map("products")
+}
+
+model ModifierGroup {
+  id                  String   @id @default(cuid())
+  name                String
+  squareModifierListId String? @unique @map("square_modifier_list_id")
+  selectionType       String   @default("SINGLE") @map("selection_type")
+  autoApplyKeywords   Json?    @map("auto_apply_keywords") // e.g. ["cookie"] — auto-show for matching product names
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  options             ModifierOption[]
+  productLinks        ProductModifierGroup[]
+
+  @@map("modifier_groups")
+}
+
+model ModifierOption {
+  id                  String   @id @default(cuid())
+  name                String
+  priceCents          Int      @default(0) @map("price_cents")
+  squareModifierId    String?  @map("square_modifier_id")
+  modifierGroupId     String   @map("modifier_group_id")
+  ordinal             Int      @default(0)
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  modifierGroup       ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@map("modifier_options")
+}
+
+model ProductModifierGroup {
+  id              String   @id @default(cuid())
+  productId       String   @map("product_id")
+  modifierGroupId String   @map("modifier_group_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, modifierGroupId])
+  @@map("product_modifier_groups")
+}
+
+model PortalSettings {
+  id                  String   @id @default("singleton")
+  deliveryFee         Float    @default(0) @map("delivery_fee")
+  freeDeliveryMinimum Float?   @map("free_delivery_minimum")
+  minLeadTimeDays     Int      @default(2) @map("min_lead_time_days")
+  maxLeadTimeDays     Int      @default(30) @map("max_lead_time_days")
+  requirePO           Boolean  @default(false) @map("require_po")
+  taxRate             Float    @default(0.07) @map("tax_rate")
+  portalEnabled       Boolean  @default(true) @map("portal_enabled")
+  welcomeMessage      String?  @map("welcome_message") @db.Text
+  orderConfirmMessage String?  @map("order_confirm_message") @db.Text
+  businessHours       Json?    @map("business_hours")
+  closedDates         Json?    @map("closed_dates")
+  scannedImageFee     Float    @default(5.00) @map("scanned_image_fee")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("portal_settings")
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  orderId         String   @map("order_id")
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount          Float
+  method          String   @default("check") // check, cash, wire, ach, square, portal, other
+  referenceNumber String?  @map("reference_number")
+  notes           String?  @db.Text
+  paymentDate     DateTime @map("payment_date")
+  recordedByUserId String  @map("recorded_by_user_id")
+  recordedByUser  User     @relation(fields: [recordedByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Ticket {
+  id              String    @id @default(cuid())
+  ticketNumber    String    @unique @map("ticket_number")
+  subject         String
+  description     String    @db.Text
+  status          String    @default("open") // open, in_progress, waiting_on_customer, resolved, closed
+  priority        String    @default("medium") // low, medium, high, urgent
+  category        String    @default("general") // order_issue, delivery, billing, product_inquiry, complaint, general
+  location        String?   // fishers, indianapolis
+  source          String    @default("portal") // email, portal, phone, walk_in
+
+  contactEmail    String?   @map("contact_email")
+  contactName     String?   @map("contact_name")
+  contactPhone    String?   @map("contact_phone")
+
+  assignedToUserId String?  @map("assigned_to_user_id")
+  assignedToUser  User?     @relation("AssignedTickets", fields: [assignedToUserId], references: [id])
+
+  parentAccountId String?   @map("parent_account_id")
+  parentAccount   ParentAccount? @relation(fields: [parentAccountId], references: [id])
+
+  orderId         String?   @map("order_id")
+  order           Order?    @relation(fields: [orderId], references: [id])
+
+  createdByUserId String?   @map("created_by_user_id")
+  createdByUser   User?     @relation("CreatedTickets", fields: [createdByUserId], references: [id])
+
+  // Email threading
+  conversationId  String?   @map("conversation_id") // Outlook conversation ID for threading
+  mailboxQueue    String?   @map("mailbox_queue") // which mailbox/folder this came from
+
+  firstResponseAt DateTime? @map("first_response_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  closedAt        DateTime? @map("closed_at")
+  slaDeadline     DateTime? @map("sla_deadline")
+  waitingSince    DateTime? @map("waiting_since") // when status changed to waiting_on_customer
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  comments        TicketComment[]
+  messages        TicketMessage[]
+  attachments     TicketAttachment[]
+  events          TicketEvent[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToUserId])
+  @@index([parentAccountId])
+  @@index([createdAt])
+  @@index([conversationId])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id          String   @id @default(cuid())
+  ticketId    String   @map("ticket_id")
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  content     String   @db.Text
+  isInternal  Boolean  @default(false) @map("is_internal")
+  source      String   @default("portal") // email, portal, system
+  userId      String?  @map("user_id")
+  user        User?    @relation(fields: [userId], references: [id])
+  authorName  String?  @map("author_name")
+  authorEmail String?  @map("author_email")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("ticket_comments")
+}
+
+// Full email messages — inbound and outbound
+model TicketMessage {
+  id                String   @id @default(cuid())
+  ticketId          String   @map("ticket_id")
+  ticket            Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  direction         String   // inbound, outbound
+  fromEmail         String   @map("from_email")
+  fromName          String?  @map("from_name")
+  toEmail           String?  @map("to_email")
+  ccEmails          String?  @map("cc_emails") @db.Text // comma-separated
+  subject           String?
+  bodyText          String?  @map("body_text") @db.Text
+  bodyHtml          String?  @map("body_html") @db.Text
+  // Provider IDs for deduplication
+  providerMessageId String?  @unique @map("provider_message_id") // Outlook message ID
+  internetMessageId String?  @map("internet_message_id") // RFC 2822 Message-ID header
+  conversationId    String?  @map("conversation_id") // Outlook conversation ID
+  inReplyTo         String?  @map("in_reply_to") // References/In-Reply-To header
+  // Metadata
+  mailboxQueue      String?  @map("mailbox_queue") // which mailbox/folder
+  receivedAt        DateTime? @map("received_at") // when email was received by provider
+  sentByUserId      String?  @map("sent_by_user_id") // which agent sent outbound
+  sentByUser        User?    @relation("SentByUser", fields: [sentByUserId], references: [id])
+  isAutoReply       Boolean  @default(false) @map("is_auto_reply")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  attachments       TicketAttachment[]
+
+  @@index([ticketId])
+  @@index([conversationId])
+  @@index([internetMessageId])
+  @@index([createdAt])
+  @@map("ticket_messages")
+}
+
+// Attachments on messages or tickets
+model TicketAttachment {
+  id              String   @id @default(cuid())
+  ticketId        String   @map("ticket_id")
+  ticket          Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId       String?  @map("message_id")
+  message         TicketMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  fileName        String   @map("file_name")
+  fileSize        Int?     @map("file_size")
+  contentType     String?  @map("content_type")
+  cloudStoragePath String? @map("cloud_storage_path")
+  publicUrl       String?  @map("public_url")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@index([messageId])
+  @@map("ticket_attachments")
+}
+
+// Audit trail — every change, assignment, status change, message
+model TicketEvent {
+  id          String   @id @default(cuid())
+  ticketId    String   @map("ticket_id")
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  eventType   String   @map("event_type") // created, status_changed, assigned, priority_changed, message_inbound, message_outbound, sla_breached, reopened, merged, note_added
+  actorId     String?  @map("actor_id") // user who performed action (null for system)
+  actorName   String?  @map("actor_name")
+  oldValue    String?  @map("old_value")
+  newValue    String?  @map("new_value")
+  metadata    Json?    // extra context
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("ticket_events")
+}
+
+// Mailbox/queue configuration for routing
+model MailboxConfig {
+  id            String   @id @default(cuid())
+  name          String   // "General Inbox", "Images", "Billing"
+  mailboxEmail  String   @map("mailbox_email") // orders@taylorsbakery.com
+  folderName    String?  @map("folder_name") // Outlook folder to watch
+  isActive      Boolean  @default(true) @map("is_active")
+  defaultCategory String? @map("default_category")
+  defaultLocation String? @map("default_location")
+  defaultPriority String? @map("default_priority")
+  autoAssign    Boolean  @default(true) @map("auto_assign")
+  // Routing rules (JSON array of {field, operator, value, action})
+  routingRules  Json?    @map("routing_rules")
+  webhookSecret String?  @map("webhook_secret") // per-queue auth
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("mailbox_configs")
+}
+
+model StandingOrder {
+  id              String   @id @default(cuid())
+  name            String
+  parentAccountId String   @map("parent_account_id")
+  parentAccount   ParentAccount @relation(fields: [parentAccountId], references: [id])
+  childLocationId String?  @map("child_location_id")
+  childLocation   ChildLocation? @relation(fields: [childLocationId], references: [id])
+  frequency       String   @default("weekly") // weekly, biweekly, monthly, as_needed
+  dayOfWeek       String?  @map("day_of_week") // monday, tuesday, etc.
+  specialNotes    String?  @map("special_notes") @db.Text
+  items           Json     @default("[]") // [{itemType, productName, quantity, unitPrice, squareCatalogVariationId, cakeSize, cakeFlavor, cakeIcing, cakeInscription, itemNotes}]
+  active          Boolean  @default(true)
+  autoSubmit      Boolean  @default(false) @map("auto_submit")
+  nextAutoSubmitDate DateTime? @map("next_auto_submit_date")
+  lastAutoSubmitAt   DateTime? @map("last_auto_submit_at")
+  createdByUserId String   @map("created_by_user_id")
+  createdByUser   User     @relation("CreatedStandingOrders", fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([parentAccountId])
+  @@index([active])
+  @@index([autoSubmit, nextAutoSubmitDate])
+  @@map("standing_orders")
+}

@@ -21,6 +21,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ id: user?.id, email: user?.email, name: user?.name }, { status: 201 });
   } catch (error: any) {
     console.error('Signup error:', error);
-    return NextResponse.json({ error: 'Failed to create account' }, { status: 500 });
+    const message = error?.code === 'P1001'
+      ? 'Database connection failed — check DATABASE_URL'
+      : error?.code === 'P2002'
+      ? 'A user with this email already exists'
+      : error?.code === 'P2021'
+      ? 'Database table missing — run prisma db push'
+      : error?.message?.includes('connect')
+      ? 'Cannot connect to database'
+      : 'Failed to create account';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

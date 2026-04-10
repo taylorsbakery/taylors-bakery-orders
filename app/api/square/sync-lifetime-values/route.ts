@@ -17,7 +17,7 @@ function isAuthorized(request: Request) {
 // Processes up to BATCH_LIMIT accounts per invocation to stay within Vercel timeout.
 // Prioritizes accounts that have never been synced (lifetimeValueCents = 0, orderCount = 0).
 // Call repeatedly (or via nightly cron) until all accounts are caught up.
-const BATCH_LIMIT = 50; // ~50 accounts in <15s with concurrency of 5 (well within 60s Vercel limit)
+const BATCH_LIMIT = 100; // ~100 accounts in <10s with concurrency of 5 (well within 60s Vercel limit)
 
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {

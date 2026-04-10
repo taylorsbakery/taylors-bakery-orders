@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { prisma } from '@/lib/db';
-import { createSquareCustomer, updateSquareCustomer } from '@/lib/square';
+import { createSquareCustomer, updateSquareCustomer, listCustomerGroups, createCustomerGroup, addCustomerToGroup } from '@/lib/square';
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -35,6 +35,20 @@ export async function POST(request: Request, { params }: { params: { id: string 
           where: { id: account.id },
           data: { squareCustomerId },
         });
+
+        // Add to Commercial Accounts group
+        try {
+          const groups = await listCustomerGroups();
+          let commercialGroup = groups.find((g: any) => (g?.name ?? '') === 'COMMERCIAL');
+          if (!commercialGroup) {
+            commercialGroup = await createCustomerGroup('COMMERCIAL');
+          }
+          if (commercialGroup?.id) {
+            await addCustomerToGroup(squareCustomerId, commercialGroup.id);
+          }
+        } catch {
+          // Non-fatal
+        }
       }
     }
     return NextResponse.json({ squareCustomerId });

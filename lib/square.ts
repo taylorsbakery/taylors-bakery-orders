@@ -397,6 +397,24 @@ export async function getSquareLocations() {
   return squareFetch('/locations', { method: 'GET' });
 }
 
+// Customer Groups API
+export async function listCustomerGroups() {
+  const data = await squareFetch('/customers/groups', { method: 'GET' });
+  return data?.groups ?? [];
+}
+
+export async function createCustomerGroup(name: string) {
+  const data = await squareFetch('/customers/groups', {
+    method: 'POST',
+    body: JSON.stringify({ group: { name } }),
+  });
+  return data?.group ?? null;
+}
+
+export async function addCustomerToGroup(customerId: string, groupId: string) {
+  return squareFetch(`/customers/${customerId}/groups/${groupId}`, { method: 'PUT' });
+}
+
 // Fetch a page of customers from Square (use cursor for pagination)
 export async function listSquareCustomers(cursor?: string) {
   const params = new URLSearchParams({ limit: '100' });

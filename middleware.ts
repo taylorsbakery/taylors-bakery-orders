@@ -10,6 +10,8 @@ const PUBLIC_PORTAL_API = [
   '/api/tickets/webhook',
   '/api/tickets/email-intake',
   '/api/standing-orders/auto-submit',
+  '/api/square/nightly-sync',
+  '/api/health',
 ];
 
 // Admin-only page routes (customers must never reach these)

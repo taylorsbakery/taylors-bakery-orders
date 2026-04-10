@@ -11,6 +11,7 @@ const PUBLIC_PORTAL_API = [
   '/api/tickets/email-intake',
   '/api/standing-orders/auto-submit',
   '/api/square/nightly-sync',
+  '/api/square/sync-lifetime-values',
   '/api/health',
 ];
 

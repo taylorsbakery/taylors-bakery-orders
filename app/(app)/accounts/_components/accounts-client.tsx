@@ -26,6 +26,8 @@ export function AccountsClient() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalAccounts, setTotalAccounts] = useState(0);
+  const [sortBy, setSortBy] = useState('displayName');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [form, setForm] = useState<any>({
@@ -34,11 +36,13 @@ export function AccountsClient() {
     defaultBillingTerms: 'NET_30', taxExempt: false, notes: '',
   });
 
-  const loadAccounts = (p?: number, q?: string) => {
+  const loadAccounts = (p?: number, q?: string, sort?: string, dir?: string) => {
     setLoading(true);
     const params = new URLSearchParams();
     params.set('page', String(p ?? page));
     params.set('limit', '50');
+    params.set('sort', sort ?? sortBy);
+    params.set('dir', dir ?? sortDir);
     if ((q ?? search)) params.set('search', q ?? search);
     fetch(`/api/accounts?${params.toString()}`)
       .then((r: any) => r?.json?.())
@@ -542,7 +546,13 @@ export function AccountsClient() {
                     <th className="text-left py-2.5 px-4 font-medium text-muted-foreground hidden lg:table-cell">Email</th>
                     <th className="text-left py-2.5 px-4 font-medium text-muted-foreground hidden lg:table-cell">Phone</th>
                     <th className="text-center py-2.5 px-4 font-medium text-muted-foreground hidden sm:table-cell">Locations</th>
-                    <th className="text-center py-2.5 px-4 font-medium text-muted-foreground hidden sm:table-cell">Status</th>
+                    <th className="text-left py-2.5 px-4 font-medium text-muted-foreground hidden xl:table-cell">Group</th>
+                    <th className="text-right py-2.5 px-4 font-medium text-muted-foreground hidden md:table-cell cursor-pointer hover:text-foreground select-none" onClick={() => { const newDir = sortBy === 'lifetimeValue' && sortDir === 'desc' ? 'asc' : 'desc'; setSortBy('lifetimeValue'); setSortDir(newDir as any); setPage(1); loadAccounts(1, undefined, 'lifetimeValue', newDir); }}>
+                      Lifetime Value {sortBy === 'lifetimeValue' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                    </th>
+                    <th className="text-center py-2.5 px-4 font-medium text-muted-foreground hidden md:table-cell cursor-pointer hover:text-foreground select-none" onClick={() => { const newDir = sortBy === 'orderCount' && sortDir === 'desc' ? 'asc' : 'desc'; setSortBy('orderCount'); setSortDir(newDir as any); setPage(1); loadAccounts(1, undefined, 'orderCount', newDir); }}>
+                      Orders {sortBy === 'orderCount' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                    </th>
                     <th className="text-right py-2.5 px-2 font-medium text-muted-foreground w-10"></th>
                   </tr>
                 </thead>
@@ -569,11 +579,27 @@ export function AccountsClient() {
                       <td className="py-2.5 px-4 text-center hidden sm:table-cell">
                         <Badge variant="outline" className="text-xs">{acct?.childLocations?.length ?? 0}</Badge>
                       </td>
-                      <td className="py-2.5 px-4 text-center hidden sm:table-cell">
-                        {acct?.squareCustomerId ? (
-                          <Badge variant="secondary" className="text-xs">Square</Badge>
+                      <td className="py-2.5 px-4 hidden xl:table-cell">
+                        {acct?.squareGroups ? (
+                          <span className="text-xs text-muted-foreground">{acct.squareGroups}</span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Local</span>
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-right hidden md:table-cell whitespace-nowrap">
+                        {(acct?.lifetimeValueCents ?? 0) > 0 ? (
+                          <span className={`font-medium ${(acct.lifetimeValueCents ?? 0) >= 100000 ? 'text-green-600' : (acct.lifetimeValueCents ?? 0) >= 10000 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            ${((acct.lifetimeValueCents ?? 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-center hidden md:table-cell">
+                        {(acct?.orderCount ?? 0) > 0 ? (
+                          <span className="text-sm">{acct.orderCount}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="py-2.5 px-2 text-right">

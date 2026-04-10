@@ -425,3 +425,37 @@ export async function listSquareCustomers(cursor?: string) {
     cursor: data?.cursor ?? null,
   };
 }
+
+// Search orders for a specific customer
+export async function searchOrdersForCustomer(customerId: string, locationIds: string[]) {
+  if (!locationIds.length) return [];
+  const allOrders: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const body: any = {
+      location_ids: locationIds,
+      query: {
+        filter: {
+          customer_filter: { customer_ids: [customerId] },
+          state_filter: { states: ['COMPLETED'] },
+        },
+      },
+      limit: 100,
+    };
+    if (cursor) body.cursor = cursor;
+    const data = await squareFetch('/orders/search', { method: 'POST', body: JSON.stringify(body) });
+    allOrders.push(...(data?.orders ?? []));
+    cursor = data?.cursor;
+  } while (cursor);
+  return allOrders;
+}
+
+// Build a map of Square group IDs → group names
+export async function getGroupIdToNameMap(): Promise<Map<string, string>> {
+  const groups = await listCustomerGroups();
+  const map = new Map<string, string>();
+  for (const g of groups) {
+    if (g?.id && g?.name) map.set(g.id, g.name);
+  }
+  return map;
+}

@@ -16,6 +16,8 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get('page') ?? '1', 10);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 200);
     const skip = (page - 1) * limit;
+    const sortBy = searchParams.get('sort') ?? 'displayName';
+    const sortDir = searchParams.get('dir') === 'desc' ? 'desc' : 'asc';
 
     if (role === 'admin') {
       const where: any = { active: true };
@@ -29,11 +31,22 @@ export async function GET(request: Request) {
         ];
       }
 
+      // Build sort order
+      const validSorts: Record<string, string> = {
+        displayName: 'displayName',
+        lifetimeValue: 'lifetimeValueCents',
+        orderCount: 'orderCount',
+        lastOrder: 'lastOrderAt',
+        createdAt: 'createdAt',
+      };
+      const orderByField = validSorts[sortBy] ?? 'displayName';
+      const orderBy = { [orderByField]: sortDir };
+
       const [accounts, total] = await Promise.all([
         prisma.parentAccount.findMany({
           where,
           include: { childLocations: { where: { active: true } } },
-          orderBy: { displayName: 'asc' },
+          orderBy,
           skip,
           take: limit,
         }),

@@ -45,6 +45,10 @@ model ParentAccount {
   taxExempt             Boolean  @default(false) @map("tax_exempt")
   notes                 String?  @db.Text
   squareCustomerId      String?  @map("square_customer_id")
+  squareGroups          String?  @map("square_groups") // Comma-separated Square group names (e.g. "COMMERCIAL,VIP")
+  lifetimeValueCents    Int      @default(0) @map("lifetime_value_cents") // Total order value from Square in cents
+  orderCount            Int      @default(0) @map("order_count") // Total number of orders from Square
+  lastOrderAt           DateTime? @map("last_order_at") // Date of most recent Square order
   active                Boolean  @default(true)
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")

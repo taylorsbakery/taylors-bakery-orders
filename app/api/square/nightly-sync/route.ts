@@ -9,6 +9,7 @@ import {
   addCustomerToGroup,
   listCustomerGroups,
   createCustomerGroup,
+  getGroupIdToNameMap,
 } from '@/lib/square';
 
 // Shared secret to protect this endpoint (set SYNC_SECRET env var)
@@ -32,6 +33,16 @@ export async function POST(request: Request) {
     // STEP 1: Pull new customers from Square → DB
     // ============================================
     console.log('[NightlySync] Step 1: Pulling new customers from Square...');
+
+    // Fetch group map for resolving group names
+    let groupMap: Map<string, string> | undefined;
+    try {
+      groupMap = await getGroupIdToNameMap();
+      console.log(`[NightlySync] Fetched ${groupMap.size} customer groups`);
+    } catch (err: any) {
+      console.warn('[NightlySync] Could not fetch groups:', err?.message);
+    }
+
     const allSquareCustomers: any[] = [];
     let cursor: string | undefined;
     do {
@@ -59,6 +70,7 @@ export async function POST(request: Request) {
         const email = customer?.email_address ?? '';
         const phone = customer?.phone_number ?? '';
         const address = customer?.address ?? {};
+        const groupIds: string[] = customer?.group_ids ?? [];
         const displayName = companyName
           || [givenName, familyName].filter(Boolean).join(' ')
           || email
@@ -67,6 +79,9 @@ export async function POST(request: Request) {
           address?.address_line_1, address?.address_line_2,
           address?.locality, address?.administrative_district_level_1, address?.postal_code,
         ].filter(Boolean);
+        const groupNames = groupMap
+          ? groupIds.map((id) => groupMap!.get(id)).filter(Boolean)
+          : [];
         return {
           squareCustomerId: customer.id,
           legalName: companyName || displayName,
@@ -75,6 +90,7 @@ export async function POST(request: Request) {
           billingContactEmail: email || null,
           billingContactPhone: phone || null,
           billingAddress: addressParts.length > 0 ? addressParts.join(', ') : null,
+          squareGroups: groupNames.length > 0 ? groupNames.join(', ') : null,
           notes: customer?.note || null,
           active: true,
         };

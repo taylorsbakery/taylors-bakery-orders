@@ -5,9 +5,9 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { prisma } from '@/lib/db';
-import { listSquareCustomers } from '@/lib/square';
+import { listSquareCustomers, getGroupIdToNameMap } from '@/lib/square';
 
-function mapCustomer(customer: any) {
+function mapCustomer(customer: any, groupMap?: Map<string, string>) {
   const squareId = customer?.id ?? '';
   const companyName = customer?.company_name ?? '';
   const givenName = customer?.given_name ?? '';
@@ -16,6 +16,7 @@ function mapCustomer(customer: any) {
   const phone = customer?.phone_number ?? '';
   const note = customer?.note ?? '';
   const address = customer?.address ?? {};
+  const groupIds: string[] = customer?.group_ids ?? [];
 
   const displayName = companyName
     || [givenName, familyName].filter(Boolean).join(' ')
@@ -27,6 +28,11 @@ function mapCustomer(customer: any) {
     address?.locality, address?.administrative_district_level_1, address?.postal_code,
   ].filter(Boolean);
 
+  // Resolve group IDs to names
+  const groupNames = groupMap
+    ? groupIds.map((id) => groupMap.get(id)).filter(Boolean)
+    : [];
+
   return {
     squareCustomerId: squareId,
     legalName: companyName || displayName,
@@ -35,6 +41,7 @@ function mapCustomer(customer: any) {
     billingContactEmail: email || null,
     billingContactPhone: phone || null,
     billingAddress: addressParts.length > 0 ? addressParts.join(', ') : null,
+    squareGroups: groupNames.length > 0 ? groupNames.join(', ') : null,
     notes: note || null,
     active: true,
   };
@@ -59,9 +66,18 @@ export async function POST() {
 
     console.log(`Fetched ${allCustomers.length} total customers from Square`);
 
+    // Fetch group ID → name mapping
+    let groupMap: Map<string, string> | undefined;
+    try {
+      groupMap = await getGroupIdToNameMap();
+      console.log(`Fetched ${groupMap.size} customer groups from Square`);
+    } catch (err: any) {
+      console.warn('Could not fetch customer groups:', err?.message);
+    }
+
     // Map all customers
     const mapped = allCustomers
-      .map(mapCustomer)
+      .map((c) => mapCustomer(c, groupMap))
       .filter((c) => !!c.squareCustomerId);
 
     // Get all existing Square customer IDs in one query
@@ -93,7 +109,7 @@ export async function POST() {
       const updateOps = toUpdate.map((c) => {
         const id = existingMap.get(c.squareCustomerId)!;
         const { squareCustomerId, active, ...data } = c;
-        return prisma.parentAccount.update({ where: { id }, data });
+        return prisma.parentAccount.update({ where: { id }, data: { ...data, squareGroups: c.squareGroups } });
       });
       // Run updates in batches of 50 within a transaction
       for (let i = 0; i < updateOps.length; i += 50) {
